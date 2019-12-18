@@ -78,13 +78,13 @@ int main()
     }
     int vfram[virtual];
     int vDisk[virtual];
-    int diskR[virtual-framNum];
+    int diskR[virtual-framNum+1];
     for(i = 0; i < virtual; i++)
     {
         vfram[i] = -1;
         vDisk[i] = -1;
     }
-    for(i = 0; i < (virtual - framNum); i++)
+    for(i = 0; i < (virtual - framNum)+1; i++)
     {
         diskR[i] = -1;
     }
@@ -256,11 +256,14 @@ ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
     {
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
         ans = getAns(ans, -1, -1, ID, vfram[ID], vDisk[ID], framLen, -1, '1');
-        if(RW == '1'){
+        if(RW == '1')
+        {
             int i = 0;
             ENode* eptr = ehead;
-            for(i = 0; i < framLen; i++){
-                if(eptr->virtNum == ID){
+            for(i = 0; i < framLen; i++)
+            {
+                if(eptr->virtNum == ID)
+                {
                     break;
                 }
             }
@@ -456,12 +459,16 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         }
         else
         {
+            //ref == 1
             if(sptr->act == '0')
             {
+
                 //[ref, act] = [1,0]
                 // move to active list head(frameNum also need to change)
                 // if act list is full, move one to inactive
                 // if inact list is full, release one
+
+                //move sptr to active list from inactive one
                 if(sheadAct != NULL)
                 {
                     sheadAct->last = sptr;
@@ -469,6 +476,7 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                 }
                 else
                 {
+                    //no node in active list
                     sheadAct = sptr;
                     stailAct = sptr;
                 }
@@ -482,47 +490,85 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                     shead = shead->next;
                 }
 
-                //change frame to active frame
-                //reset frame and act
-                if((framNum/2)+frameActLen < framNum)
-                {
-                    sptr->framNum = (framNum/2)+frameActLen;
-                }
-                else
-                {
-                    sptr->framNum = framNum-1;
-                }
-                sptr->ref = '0';
-                sptr->act = '1';
-                vfram[ID] = sptr->framNum;
-
+                // reset framelen
                 frameActLen++;
                 framLen--;
+
+                // if active list is out of size, resize
                 if(frameActLen > frameActNum)
                 {
+                    int inActFram = sptr->framNum;
+                    //find node in active list which ref = 0
+                    SNode* sReptr = stailAct;
+                    while(1)
+                    {
+                        if(sReptr->ref == '1')
+                        {
+                            // if stail->ref == '1', change to '0' and move to head
+                            sReptr->ref = '0';
+                            if(frameActLen == 1)
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                stailAct = stailAct->last;
+                                stailAct->next = NULL;
+                                sReptr = sheadAct->last;
+                                sReptr->next = sheadAct;
+                                sReptr = stailAct;
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    //set new fram num, act
+                    sptr->framNum = sReptr->framNum;
+                    vfram[sptr->virtNum] = sptr->framNum;
+                    sptr->act = '1';
+
                     // active list is out of size, move out stailAct
-                    sptr = stailAct;
+                    sReptr = stailAct;
                     stailAct = stailAct->last;
                     stailAct->next = NULL;
 
                     if(shead == NULL)
                     {
-                        shead = sptr;
-                        stail = sptr;
+                        shead = sReptr;
+                        stail = sReptr;
                     }
                     else
                     {
-                        sptr->next = shead;
-                        shead->last = sptr;
+                        sReptr->next = shead;
+                        shead->last = sReptr;
                         shead = shead->last;
                     }
 
+
                     //reset framename, act to inactive list
-                    sptr->framNum = framLen;
-                    vfram[sptr->virtNum] = sptr->framNum;
-                    sptr->act = '0';
+                    sReptr->act = '0';
+                    sReptr->framNum = inActFram;
+
+
+                    // reset framelen
+                    frameActLen--;
+                    framLen++;
 
                 }
+                else
+                {
+                    //printf("frame %d\n",(framNum/2)+frameActLen);
+                    sptr->framNum = (framNum/2)+frameActLen-1;
+                }
+                //change frame to active frame
+                //reset frame and act
+                sptr->ref = '0';
+                sptr->act = '1';
+                vfram[ID] = sptr->framNum;
+
             }
             else
             {
@@ -561,10 +607,9 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
 
         shead->framNum = framLen;
         shead->virtNum = ID;
-        shead->ref = '0';
+        shead->ref = '1';
         shead->act = '0';
         shead->last = NULL;
-
 
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
         ans = getAns(ans, -1, -1, ID, framLen, vDisk[ID], framLen+1, frameActLen, '0');
@@ -575,14 +620,43 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
     {
         //page replacement
 
+        // find a snode which ref = 0
+        SNode* sptr = stail;
+        while(1)
+        {
+            if(sptr->ref == '1')
+            {
+                // if stail->ref == '1', change to '0' and move to head
+                sptr->ref = '0';
+                if(framLen == 1)
+                {
+                    break;
+                }
+                else
+                {
+                    stail = stail->last;
+                    stail->next = NULL;
+                    sptr = shead->last;
+                    sptr->next = shead;
+                    sptr = stail;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+
         //create new node for ID(at shead)
         shead->last = malloc(sizeof(SNode));
         shead = shead->last;
 
-        //ID get free frame from stail
+
+
+        //ID get free frame from sptr
         shead->framNum = stail->framNum;
         shead->virtNum = ID;
-        shead->ref = '0';
+        shead->ref = '1';
         shead->act = '0';
 
         //record frame in vPage
@@ -616,7 +690,7 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         }
 
         // delete the tail of inactive list
-        SNode* sptr = stail;
+        sptr = stail;
         stail = stail->last;
         free(sptr);
 

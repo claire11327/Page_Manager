@@ -33,7 +33,9 @@
         - if ref == '1' && act == '1' , move to the head of active list
         - if active list is full, move the tail of active list to the head of inactive list
     - priority: 
-        - FIFO(remove from the tail of inactive list)
+        - check the tail of in active list, 
+            if its ref == '1', ref = '0' and move to the head of list.
+            if its ref == '0', swapped out 
 
 ## Input File Format
 ```

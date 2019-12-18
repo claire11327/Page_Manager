@@ -1,9 +1,13 @@
-Policy: FIFO
+Policy: SLRU
 Number of Virtual Page: 3
 Number of Physical Frame: 2
 -----Trace-----
 Write 2
+Write 2
 Write 0
 Write 1
+Write 1
+Write 1
+Write 0
 Read 2
 Write 2
