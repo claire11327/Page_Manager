@@ -5,9 +5,9 @@
 
 #include "memory_manager.h"
 
-ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int ID, ANS ans);
-ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int ID, unsigned char RW, ANS ans);
-ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int ID, int frameActLen, int frameActNum, ANS ans);
+ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, ANS ans);
+ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, unsigned char RW, ANS ans);
+ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, int frameActLen, int frameActNum, ANS ans);
 ANS getAns(ANS ans, int evVir, int evPag, int idVir, int idPag, int idSou, int framLen, int frameActLen, unsigned char HitMiss);
 
 int dealStr(char* str, int k);
@@ -76,15 +76,16 @@ int main()
         }
         memset(str,'\0', 60);
     }
+    int dSize = virtual-framNum+5;
     int vfram[virtual];
     int vDisk[virtual];
-    int diskR[virtual-framNum+1];
+    int diskR[dSize];
     for(i = 0; i < virtual; i++)
     {
         vfram[i] = -1;
         vDisk[i] = -1;
     }
-    for(i = 0; i < (virtual - framNum)+1; i++)
+    for(i = 0; i < dSize; i++)
     {
         diskR[i] = -1;
     }
@@ -96,7 +97,6 @@ int main()
     {
         ANS ans;
         int ID = -1;
-
         //strtok get Instr, ID
         substr = strtok(str, del2);
         substr = strtok(NULL, del2);
@@ -106,9 +106,9 @@ int main()
             printf("out of virtual fram size\n");
             return -1;
         }
-        if(policyN == 0)
+        if(policyN == 0 || framNum == 1)
         {
-            ans = FIFO_manager(vfram, vDisk, diskR, framLen, framNum, ID, ans);
+            ans = FIFO_manager(vfram, vDisk, diskR, framLen, framNum, dSize, ID, ans);
             framLen = ans.framLen;
         }
         else if(policyN == 1)
@@ -116,29 +116,30 @@ int main()
             unsigned char RW = '0';
             if(strcmp(str,"Write") == 0)
                 RW = '1';
-            ans = ESCA_manager(vfram, vDisk, diskR, framLen, framNum, ID, RW, ans);
+            ans = ESCA_manager(vfram, vDisk, diskR, framLen, framNum, dSize, ID, RW, ans);
             framLen = ans.framLen;
         }
         else if(policyN == 2)
         {
 
             //frameLen = inActframe
-            frameActNum = framNum - framNum/2;
-            ans = SLRU_manager(vfram, vDisk, diskR, framLen, framNum, ID, frameActLen, frameActNum, ans);
+
+            frameActNum = framNum/2;
+            ans = SLRU_manager(vfram, vDisk, diskR, framLen, framNum, dSize, ID, frameActLen, frameActNum, ans);
             framLen = ans.framLen;
             frameActLen = ans.frameActLen;
         }
         if(ans.HitMiss == '1')
         {
             //Hit
-            printf("Hit, %d=>%d\n", ans.idVir, ans.idPag);
+            //printf("Hit, %d=>%d\n", ans.idVir, ans.idPag);
             sprintf(myAnsStr,"Hit, %d=>%d\n",ans.idVir, ans.idPag);
         }
         else
         {
             //Miss
             miss++;
-            printf("Miss, %d, %d>>%d, %d<<%d\n",ans.idPag, ans.evVir, ans.evPag,ans.idVir, ans.idSou);
+            //printf("Miss, %d, %d>>%d, %d<<%d\n",ans.idPag, ans.evVir, ans.evPag,ans.idVir, ans.idSou);
             sprintf(myAnsStr, "Miss, %d, %d>>%d, %d<<%d\n",ans.idPag, ans.evVir, ans.evPag,ans.idVir, ans.idSou);
         }
 
@@ -175,7 +176,7 @@ int main()
 
 
 
-ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int ID, ANS ans)
+ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, ANS ans)
 {
     if(vfram[ID] != -1)
     {
@@ -200,11 +201,11 @@ ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         ftail->framNum = framLen;
         ftail->virtNum = ID;
         ftail->next = NULL;
+        vfram[ID] = ftail->framNum;
+        framLen++;
 
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, -1, -1, ID, framLen, vDisk[ID], framLen+1, -1, '0');
-        vfram[ID] = framLen;
-        framLen++;
+        ans = getAns(ans, -1, -1, ID, ftail->framNum, vDisk[ID], framLen, -1, '0');
     }
     else
     {
@@ -218,7 +219,6 @@ ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         vfram[fhead->virtNum] = -1;
 
         int i = 0;
-        int dSize = sizeof(diskR)/sizeof(int);
 
         //find free disk to store the replaced one
         for(i = 0; i < dSize; i++)
@@ -231,7 +231,7 @@ ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
             }
         }
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, fhead->virtNum, fhead->framNum, ID, vfram[ID], vDisk[ID], framLen, -1, '0');
+        ans = getAns(ans, fhead->virtNum, vDisk[fhead->virtNum], ID, vfram[ID], vDisk[ID], framLen, -1, '0');
 
         //release occupied(by ID) disk
         if(vDisk[ID] != -1)
@@ -250,25 +250,28 @@ ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
 
 
 
-ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int ID, unsigned char RW, ANS ans)
+ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, unsigned char RW, ANS ans)
 {
+
     if(vfram[ID] != -1)
     {
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
         ans = getAns(ans, -1, -1, ID, vfram[ID], vDisk[ID], framLen, -1, '1');
-        if(RW == '1')
+
+        int i = 0;
+        ENode* eptr = ehead;
+        for(i = 0; i < framLen; i++)
         {
-            int i = 0;
-            ENode* eptr = ehead;
-            for(i = 0; i < framLen; i++)
+            if(eptr->virtNum == ID)
             {
-                if(eptr->virtNum == ID)
-                {
-                    break;
-                }
+                break;
             }
-            eptr->dir = '1';
+            eptr = eptr->next;
         }
+        if(RW == '1')
+            eptr->dir = '1';
+        eptr->ref = '1';
+
         return ans;
     }
     if(framLen < framNum)
@@ -291,7 +294,6 @@ ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         etail->framNum = framLen;
         etail->virtNum = ID;
         etail->next = NULL;
-        etail->last = NULL;
 
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
         ans = getAns(ans, -1, -1, ID, framLen, vDisk[ID], framLen+1, -1, '0');
@@ -300,6 +302,7 @@ ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
     }
     else
     {
+
         /* physical memory is full */
         etail->next = malloc(sizeof(ENode));
         etail->next->last = etail;
@@ -308,15 +311,19 @@ ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         ENode* eptrr = NULL;
         ENode* eptrd = NULL;
 
+        etail->virtNum = ID;
+
+
+
 
         /* choose evicted */
         int i = 0;
         for(i = 0; i < 2; i++)
         {
+            int j = 0;
             eptr = ehead;
-            while(eptr != etail)
+            for(j= 0; j< framLen; j++)
             {
-
                 if(eptr->ref == '0')
                 {
                     if(eptr->dir == '0')
@@ -324,22 +331,19 @@ ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                         eptrr = eptr;
                         break;
                     }
-                    else if(eptr->dir == '1' && eptrd == NULL)
+                    else if(eptrd == NULL)
                     {
                         eptrd = eptr;
-
                     }
                 }
-                else
+                else if(eptr->virtNum != ID)
                 {
                     eptr->ref = '0';
                 }
                 eptr = eptr->next;
-
             }
 
         }
-
         if(eptrd != NULL)
         {
             eptr = eptrd;
@@ -356,24 +360,21 @@ ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         etail->virtNum = ID;
         etail->next = NULL;
 
-
         vfram[ID] = etail->framNum;
         vfram[eptr->virtNum] = -1;
-
-        int dSize = sizeof(diskR)/sizeof(int);
 
         for(i = 0; i < dSize; i++)
         {
             if(diskR[i] == -1)
             {
-                diskR[i] = ehead->virtNum;
-                vDisk[ehead->virtNum] = i;
+                diskR[i] = eptr->virtNum;
+                vDisk[eptr->virtNum] = i;
                 break;
             }
         }
 
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, eptr->virtNum, eptr->framNum, ID, vfram[ID], vDisk[ID], framLen, -1, '0');
+        ans = getAns(ans, eptr->virtNum, vDisk[eptr->virtNum], ID, vfram[ID], vDisk[ID], framLen, -1, '0');
 
         if(vDisk[ID] != -1)
         {
@@ -388,47 +389,54 @@ ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         else
         {
             eptr->last->next = eptr->next;
+            eptr->next->last = eptr->last;
         }
         free(eptr);
 
+        eptrr = NULL;
+        eptrd = NULL;
 
 
 
     }
+
+
+
+
+
+
     return ans;
 }
 
 
 
-ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int ID, int frameActLen, int frameActNum, ANS ans)
+ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, int frameActLen, int frameActNum, ANS ans)
 {
     if(vfram[ID] != -1)
     {
-
-        int len = -1;
-        SNode* sptr = NULL;
-        if(vfram[ID] < (framNum/2))
-        {
-            //virtual page is in inactive list
-            sptr = shead;
-            len = framLen;
-        }
-        else
-        {
-            //virtual page is in active list
-            sptr = sheadAct;
-            len = frameActLen;
-        }
-
+        stail->next = NULL;
+        SNode* sptr = shead;
         int i = 0;
-        for(i = 0; i < len; i++)
+        for(i = 0; i < framLen; i++)
         {
             if(sptr->virtNum == ID)
             {
                 break;
             }
-        }
+            sptr = sptr->next;
 
+        }
+        if(sptr == NULL)
+        {
+            sptr = sheadAct;
+            for(i = 0; i < frameActLen; i++)
+            {
+                if(sptr->virtNum == ID)
+                {
+                    break;
+                }
+            }
+        }
         if(sptr->ref == '0')
         {
             sptr->ref = '1';
@@ -440,6 +448,7 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                     //if sptr == shead, no need to change
                     //if sptr != shead, sptr need to move to head
                     sptr->last->next = sptr->next;
+                    sptr->next->last = sptr->last;
                     shead->last = sptr;
                     shead = sptr;
                 }
@@ -452,6 +461,7 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                     //if sptr == sheadAct, no need to change
                     //if sptr != sheadAct, sptr need to move to head
                     sptr->last->next = sptr->next;
+                    sptr->next->last = sptr->last;
                     sheadAct->last = sptr;
                     sheadAct = sptr;
                 }
@@ -484,6 +494,7 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                 if(sptr != shead)
                 {
                     sptr->last->next = sptr->next;
+                    sptr->next->last = sptr->last;
                 }
                 else
                 {
@@ -494,18 +505,18 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                 frameActLen++;
                 framLen--;
 
+
                 // if active list is out of size, resize
                 if(frameActLen > frameActNum)
                 {
-                    int inActFram = sptr->framNum;
                     //find node in active list which ref = 0
-                    SNode* sReptr = stailAct;
+                    SNode* sreptr = stailAct;
                     while(1)
                     {
-                        if(sReptr->ref == '1')
+                        if(sreptr->ref == '1')
                         {
                             // if stail->ref == '1', change to '0' and move to head
-                            sReptr->ref = '0';
+                            sreptr->ref = '0';
                             if(frameActLen == 1)
                             {
                                 break;
@@ -514,9 +525,10 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                             {
                                 stailAct = stailAct->last;
                                 stailAct->next = NULL;
-                                sReptr = sheadAct->last;
-                                sReptr->next = sheadAct;
-                                sReptr = stailAct;
+                                sreptr->next = sheadAct;
+                                sheadAct->last = sreptr;
+                                sheadAct = sheadAct->last;
+                                sreptr = stailAct;
                             }
                         }
                         else
@@ -525,32 +537,31 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                         }
                     }
 
-                    //set new fram num, act
-                    sptr->framNum = sReptr->framNum;
-                    vfram[sptr->virtNum] = sptr->framNum;
+                    //vfram[sptr->virtNum] = sptr->framNum;
                     sptr->act = '1';
 
                     // active list is out of size, move out stailAct
-                    sReptr = stailAct;
+                    sreptr = stailAct;
                     stailAct = stailAct->last;
                     stailAct->next = NULL;
 
+
                     if(shead == NULL)
                     {
-                        shead = sReptr;
-                        stail = sReptr;
+                        shead = sreptr;
+                        stail = sreptr;
                     }
                     else
                     {
-                        sReptr->next = shead;
-                        shead->last = sReptr;
+                        sreptr->next = shead;
+                        shead->last = sreptr;
                         shead = shead->last;
                     }
 
 
                     //reset framename, act to inactive list
-                    sReptr->act = '0';
-                    sReptr->framNum = inActFram;
+                    sreptr->ref = '0';
+                    sreptr->act = '0';
 
 
                     // reset framelen
@@ -558,16 +569,10 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                     framLen++;
 
                 }
-                else
-                {
-                    //printf("frame %d\n",(framNum/2)+frameActLen);
-                    sptr->framNum = (framNum/2)+frameActLen-1;
-                }
                 //change frame to active frame
                 //reset frame and act
                 sptr->ref = '0';
                 sptr->act = '1';
-                vfram[ID] = sptr->framNum;
 
             }
             else
@@ -578,20 +583,20 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                     //if sptr == sheadAct, no need to change
                     //if sptr != sheadAct, sptr need to move to head
                     sptr->last->next = sptr->next;
+                    sptr->next->last = sptr->last;
                     sheadAct->last = sptr;
                     sheadAct = sptr;
                 }
             }
+
         }
-
-
         //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
         ans = getAns(ans, -1, -1, ID, vfram[ID], vDisk[ID], framLen, frameActLen, '1');
         return ans;
     }
 
 
-    if(framLen < (framNum/2))
+    if(framLen < (framNum - frameActNum))
     {
         //still have room & ID never record
         if(framLen == 0)
@@ -602,19 +607,23 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         else
         {
             shead->last = malloc(sizeof(SNode));
+            shead->last->next = shead;
             shead = shead->last;
         }
 
-        shead->framNum = framLen;
+        shead->framNum = framLen+frameActLen;
         shead->virtNum = ID;
         shead->ref = '1';
         shead->act = '0';
         shead->last = NULL;
 
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, -1, -1, ID, framLen, vDisk[ID], framLen+1, frameActLen, '0');
-        vfram[ID] = framLen;
+        vfram[ID] = shead->framNum;
         framLen++;
+
+
+
+        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+        ans = getAns(ans, -1, -1, ID, shead->framNum, vDisk[ID], framLen, frameActLen, '0');
     }
     else
     {
@@ -636,8 +645,10 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                 {
                     stail = stail->last;
                     stail->next = NULL;
-                    sptr = shead->last;
                     sptr->next = shead;
+                    sptr->last = NULL;
+                    shead->last = sptr;
+                    shead = shead->last;
                     sptr = stail;
                 }
             }
@@ -646,27 +657,28 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
                 break;
             }
         }
-
         //create new node for ID(at shead)
         shead->last = malloc(sizeof(SNode));
+        shead->last->next = shead;
         shead = shead->last;
 
 
 
+
         //ID get free frame from sptr
-        shead->framNum = stail->framNum;
+        shead->framNum = sptr->framNum;
         shead->virtNum = ID;
         shead->ref = '1';
         shead->act = '0';
+
 
         //record frame in vPage
         vfram[ID] = shead->framNum;
 
         //remove stail frame record from vPage
-        vfram[stail->virtNum] = -1;
+        vfram[sptr->virtNum] = -1;
 
         int i = 0;
-        int dSize = sizeof(diskR)/sizeof(int);
 
         // put stail in the first free frame of disk
         // & record in vDisk
@@ -674,20 +686,23 @@ ANS SLRU_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, i
         {
             if(diskR[i] == -1)
             {
-                diskR[i] = stail->virtNum;
-                vDisk[stail->virtNum] = i;
+                diskR[i] = sptr->virtNum;
+                vDisk[sptr->virtNum] = i;
                 break;
             }
         }
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, stail->virtNum, stail->framNum, ID, vfram[ID], vDisk[ID], framLen, frameActLen, '0');
 
+
+        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+        ans = getAns(ans, sptr->virtNum, vDisk[sptr->virtNum], ID, vfram[ID], vDisk[ID], framLen, frameActLen, '0');
         // change ID source
         if(vDisk[ID] != -1)
         {
             diskR[vDisk[ID]] = -1;
             vDisk[ID] = -1;
         }
+
+
 
         // delete the tail of inactive list
         sptr = stail;
