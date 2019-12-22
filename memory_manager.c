@@ -37,6 +37,7 @@ int main()
     int virtual = -1;    //total virtual fram number
     int policyN = -1;    //0: FIFO, 1:enhanced, 2:SLRU
 
+
     if((fr = fopen("input.txt","r") ) == NULL )
     {
         perror("open input file failed: ");
@@ -76,14 +77,22 @@ int main()
         }
         memset(str,'\0', 60);
     }
+
+    // get frameNum ... set array
     int dSize = virtual-framNum+5;
     int vfram[virtual];
     int vDisk[virtual];
     int diskR[dSize];
+    int pageTable[virtual][3];
+
+
     for(i = 0; i < virtual; i++)
     {
         vfram[i] = -1;
         vDisk[i] = -1;
+        pageTable[i][0] = -1;
+        pageTable[i][1] = -1;
+        pageTable[i][2] = -1;
     }
     for(i = 0; i < dSize; i++)
     {
@@ -141,7 +150,18 @@ int main()
             miss++;
             //printf("Miss, %d, %d>>%d, %d<<%d\n",ans.idPag, ans.evVir, ans.evPag,ans.idVir, ans.idSou);
             sprintf(myAnsStr, "Miss, %d, %d>>%d, %d<<%d\n",ans.idPag, ans.evVir, ans.evPag,ans.idVir, ans.idSou);
+
+            if(ans.evVir != -1)
+            {
+                pageTable[ans.evVir][0] = ans.evPag;
+                pageTable[ans.evVir][2] = 0;    // not persent
+            }
+            pageTable[ans.idVir][0] = ans.idPag;
+            pageTable[ans.idVir][1] = 1;    // in use
+            pageTable[ans.idVir][2] = 1;    // in persent
+
         }
+
 
         fputs(myAnsStr, fw);
         memset(str,'\0', 60);
@@ -168,244 +188,252 @@ int main()
     fclose(fr);
     fclose(fw);
 
-
-
-    return -1;
-
-}
-
-
-
-ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, ANS ans)
-{
-    if(vfram[ID] != -1)
-    {
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, -1, -1, ID, vfram[ID], vDisk[ID], framLen, -1, '1');
-        return ans;
-    }
-    if(framLen < framNum)
-    {
-        //still have room in frame
-        if(framLen == 0)
+    /*
+        for(i = 0; i < virtual; i++)
         {
-            fhead = malloc(sizeof(FNode));
-            ftail = fhead;
+            printf("PFI/DBI %d in Use %d present %d \n", pageTable[i][0], pageTable[i][1], pageTable[i][2]);
+        }
+    *.
+
+
+
+
+        return -1;
+
+    }
+
+
+
+    ANS FIFO_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, ANS ans)
+    {
+        if(vfram[ID] != -1)
+        {
+            //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+            ans = getAns(ans, -1, -1, ID, vfram[ID], vDisk[ID], framLen, -1, '1');
+            return ans;
+        }
+        if(framLen < framNum)
+        {
+            //still have room in frame
+            if(framLen == 0)
+            {
+                fhead = malloc(sizeof(FNode));
+                ftail = fhead;
+            }
+            else
+            {
+                ftail->next = malloc(sizeof(FNode));
+                ftail = ftail->next;
+            }
+
+            ftail->framNum = framLen;
+            ftail->virtNum = ID;
+            ftail->next = NULL;
+            vfram[ID] = ftail->framNum;
+            framLen++;
+
+            //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+            ans = getAns(ans, -1, -1, ID, ftail->framNum, vDisk[ID], framLen, -1, '0');
         }
         else
         {
+            //page replacement
             ftail->next = malloc(sizeof(FNode));
             ftail = ftail->next;
-        }
 
-        ftail->framNum = framLen;
-        ftail->virtNum = ID;
-        ftail->next = NULL;
-        vfram[ID] = ftail->framNum;
-        framLen++;
+            ftail->framNum = fhead->framNum;
+            ftail->virtNum = ID;
+            vfram[ID] = ftail->framNum;
+            vfram[fhead->virtNum] = -1;
 
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, -1, -1, ID, ftail->framNum, vDisk[ID], framLen, -1, '0');
-    }
-    else
-    {
-        //page replacement
-        ftail->next = malloc(sizeof(FNode));
-        ftail = ftail->next;
+            int i = 0;
 
-        ftail->framNum = fhead->framNum;
-        ftail->virtNum = ID;
-        vfram[ID] = ftail->framNum;
-        vfram[fhead->virtNum] = -1;
-
-        int i = 0;
-
-        //find free disk to store the replaced one
-        for(i = 0; i < dSize; i++)
-        {
-            if(diskR[i] == -1)
+            //find free disk to store the replaced one
+            for(i = 0; i < dSize; i++)
             {
-                diskR[i] = fhead->virtNum;
-                vDisk[fhead->virtNum] = i;
-                break;
+                if(diskR[i] == -1)
+                {
+                    diskR[i] = fhead->virtNum;
+                    vDisk[fhead->virtNum] = i;
+                    break;
+                }
             }
-        }
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, fhead->virtNum, vDisk[fhead->virtNum], ID, vfram[ID], vDisk[ID], framLen, -1, '0');
+            //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+            ans = getAns(ans, fhead->virtNum, vDisk[fhead->virtNum], ID, vfram[ID], vDisk[ID], framLen, -1, '0');
 
-        //release occupied(by ID) disk
-        if(vDisk[ID] != -1)
-        {
-            diskR[vDisk[ID]] = -1;
-            vDisk[ID] = -1;
-        }
-        FNode* fptr = fhead;
-        fhead = fhead->next;
-        free(fptr);
-    }
-
-    return ans;
-
-}
-
-
-
-ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, unsigned char RW, ANS ans)
-{
-
-    if(vfram[ID] != -1)
-    {
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, -1, -1, ID, vfram[ID], vDisk[ID], framLen, -1, '1');
-
-        int i = 0;
-        ENode* eptr = ehead;
-        for(i = 0; i < framLen; i++)
-        {
-            if(eptr->virtNum == ID)
+            //release occupied(by ID) disk
+            if(vDisk[ID] != -1)
             {
-                break;
+                diskR[vDisk[ID]] = -1;
+                vDisk[ID] = -1;
             }
-            eptr = eptr->next;
+            FNode* fptr = fhead;
+            fhead = fhead->next;
+            free(fptr);
         }
-        if(RW == '1')
-            eptr->dir = '1';
-        eptr->ref = '1';
 
         return ans;
-    }
-    if(framLen < framNum)
-    {
-        /* physical memory is not full */
-        if(framLen == 0)
-        {
-            ehead = malloc(sizeof(ENode));
-            etail = ehead;
-        }
-        else
-        {
-            etail->next = malloc(sizeof(ENode));
-            etail->next->last = etail;
-            etail = etail->next;
-        }
 
-        etail->ref = '1';
-        etail->dir = RW;
-        etail->framNum = framLen;
-        etail->virtNum = ID;
-        etail->next = NULL;
-
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, -1, -1, ID, framLen, vDisk[ID], framLen+1, -1, '0');
-        vfram[ID] = framLen;
-        framLen++;
     }
-    else
+
+
+
+    ANS ESCA_manager(int* vfram, int* vDisk, int* diskR, int framLen, int framNum, int dSize, int ID, unsigned char RW, ANS ans)
     {
 
-        /* physical memory is full */
-        etail->next = malloc(sizeof(ENode));
-        etail->next->last = etail;
-        etail = etail->next;
-        ENode* eptr = ehead;
-        ENode* eptrr = NULL;
-        ENode* eptrd = NULL;
-
-        etail->virtNum = ID;
-
-
-
-
-        /* choose evicted */
-        int i = 0;
-        for(i = 0; i < 2; i++)
+        if(vfram[ID] != -1)
         {
-            int j = 0;
-            eptr = ehead;
-            for(j= 0; j< framLen; j++)
+            //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+            ans = getAns(ans, -1, -1, ID, vfram[ID], vDisk[ID], framLen, -1, '1');
+
+            int i = 0;
+            ENode* eptr = ehead;
+            for(i = 0; i < framLen; i++)
             {
-                if(eptr->ref == '0')
+                if(eptr->virtNum == ID)
                 {
-                    if(eptr->dir == '0')
-                    {
-                        eptrr = eptr;
-                        break;
-                    }
-                    else if(eptrd == NULL)
-                    {
-                        eptrd = eptr;
-                    }
-                }
-                else if(eptr->virtNum != ID)
-                {
-                    eptr->ref = '0';
+                    break;
                 }
                 eptr = eptr->next;
             }
+            if(RW == '1')
+                eptr->dir = '1';
+            eptr->ref = '1';
 
+            return ans;
         }
-        if(eptrd != NULL)
+        if(framLen < framNum)
         {
-            eptr = eptrd;
-        }
-        if(eptrr != NULL)
-        {
-            eptr = eptrr;
-        }
-
-        /* switch node */
-        etail->ref = '1';
-        etail->dir = RW;
-        etail->framNum = eptr->framNum;
-        etail->virtNum = ID;
-        etail->next = NULL;
-
-        vfram[ID] = etail->framNum;
-        vfram[eptr->virtNum] = -1;
-
-        for(i = 0; i < dSize; i++)
-        {
-            if(diskR[i] == -1)
-            {
-                diskR[i] = eptr->virtNum;
-                vDisk[eptr->virtNum] = i;
-                break;
-            }
-        }
-
-        //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
-        ans = getAns(ans, eptr->virtNum, vDisk[eptr->virtNum], ID, vfram[ID], vDisk[ID], framLen, -1, '0');
-
-        if(vDisk[ID] != -1)
-        {
-            diskR[vDisk[ID]] = -1;
-            vDisk[ID] = -1;
-        }
-
-        if(eptr->last == NULL)
-        {
-            ehead = ehead->next;
-        }
-        else
-        {
-            eptr->last->next = eptr->next;
-            eptr->next->last = eptr->last;
-        }
-        free(eptr);
-
-        eptrr = NULL;
-        eptrd = NULL;
-
-
-
+            /* physical memory is not full */
+    if(framLen == 0)
+    {
+        ehead = malloc(sizeof(ENode));
+        etail = ehead;
+    }
+    else
+    {
+        etail->next = malloc(sizeof(ENode));
+        etail->next->last = etail;
+        etail = etail->next;
     }
 
+    etail->ref = '1';
+    etail->dir = RW;
+    etail->framNum = framLen;
+    etail->virtNum = ID;
+    etail->next = NULL;
+
+    //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+    ans = getAns(ans, -1, -1, ID, framLen, vDisk[ID], framLen+1, -1, '0');
+    vfram[ID] = framLen;
+    framLen++;
+}
+else
+{
+
+    /* physical memory is full */
+    etail->next = malloc(sizeof(ENode));
+    etail->next->last = etail;
+    etail = etail->next;
+    ENode* eptr = ehead;
+    ENode* eptrr = NULL;
+    ENode* eptrd = NULL;
+
+    etail->virtNum = ID;
+
+
+
+
+    /* choose evicted */
+    int i = 0;
+    for(i = 0; i < 2; i++)
+    {
+        int j = 0;
+        eptr = ehead;
+        for(j= 0; j< framLen; j++)
+        {
+            if(eptr->ref == '0')
+            {
+                if(eptr->dir == '0')
+                {
+                    eptrr = eptr;
+                    break;
+                }
+                else if(eptrd == NULL)
+                {
+                    eptrd = eptr;
+                }
+            }
+            else if(eptr->virtNum != ID)
+            {
+                eptr->ref = '0';
+            }
+            eptr = eptr->next;
+        }
+
+    }
+    if(eptrd != NULL)
+    {
+        eptr = eptrd;
+    }
+    if(eptrr != NULL)
+    {
+        eptr = eptrr;
+    }
+
+    /* switch node */
+    etail->ref = '1';
+    etail->dir = RW;
+    etail->framNum = eptr->framNum;
+    etail->virtNum = ID;
+    etail->next = NULL;
+
+    vfram[ID] = etail->framNum;
+    vfram[eptr->virtNum] = -1;
+
+    for(i = 0; i < dSize; i++)
+    {
+        if(diskR[i] == -1)
+        {
+            diskR[i] = eptr->virtNum;
+            vDisk[eptr->virtNum] = i;
+            break;
+        }
+    }
+
+    //(ANS ans, evVir, evPag, idVir, idPag, idSou, framLen, frameActLen, HitMiss);
+    ans = getAns(ans, eptr->virtNum, vDisk[eptr->virtNum], ID, vfram[ID], vDisk[ID], framLen, -1, '0');
+
+    if(vDisk[ID] != -1)
+    {
+        diskR[vDisk[ID]] = -1;
+        vDisk[ID] = -1;
+    }
+
+    if(eptr->last == NULL)
+    {
+        ehead = ehead->next;
+    }
+    else
+    {
+        eptr->last->next = eptr->next;
+        eptr->next->last = eptr->last;
+    }
+    free(eptr);
+
+    eptrr = NULL;
+    eptrd = NULL;
+
+
+
+}
 
 
 
 
 
-    return ans;
+
+return ans;
 }
 
 
